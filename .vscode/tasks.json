@@ -1,0 +1,86 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+        {
+			"label": "Compile AKLT Notebook to PDF (No Code)",
+			"type": "shell",
+			"command": "/opt/anaconda3/bin/conda run -n physics_3_11_9 jupyter nbconvert --to webpdf --execute --ExecutePreprocessor.timeout=600 --no-input --output AKLT_no_code AKLT.ipynb",
+			"group": {
+				"kind": "build",
+                "isDefault": true
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Compile AKLT Notebook to PDF (With Code)",
+			"type": "shell",
+			"command": "/opt/anaconda3/bin/conda run -n physics_3_11_9 jupyter nbconvert --to webpdf --execute --ExecutePreprocessor.timeout=600 --output AKLT_with_code AKLT.ipynb",
+			"group": {
+				"kind": "build"
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Compile Perturbed Coin Notebook to PDF (No Code)",
+			"type": "shell",
+			"command": "/opt/anaconda3/bin/conda run -n physics_3_11_9 jupyter nbconvert --to webpdf --execute --ExecutePreprocessor.timeout=600 --no-input --output perturbed_coin_no_code perturbed_coin.ipynb",
+			"group": {
+				"kind": "build",
+                "isDefault": true
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Compile Perturbed Coin Notebook to PDF (With Code)",
+			"type": "shell",
+			"command": "/opt/anaconda3/bin/conda run -n physics_3_11_9 jupyter nbconvert --to webpdf --execute --ExecutePreprocessor.timeout=600 --output perturbed_coin_with_code perturbed_coin.ipynb",
+			"group": {
+				"kind": "build"
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Compile Bird Notebook to PDF (No Code)",
+			"type": "shell",
+			"command": "/opt/anaconda3/bin/conda run -n physics_3_11_9 jupyter nbconvert --to webpdf --execute --ExecutePreprocessor.timeout=600 --no-input --output bird_no_code bird.ipynb",
+			"group": {
+				"kind": "build",
+                "isDefault": true
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Compile Bird Notebook to PDF (With Code)",
+			"type": "shell",
+			"command": "/opt/anaconda3/bin/conda run -n physics_3_11_9 jupyter nbconvert --to webpdf --execute --ExecutePreprocessor.timeout=600 --output bird_with_code bird.ipynb",
+			"group": {
+				"kind": "build"
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		}
+	]
+}
