@@ -32,16 +32,4 @@ Sz = np.array([
     [0,0,-1]
 ], dtype=complex)
 
-Jx = np.kron(Sx, np.eye(3)) + np.kron(np.eye(3), Sx)
-Jy = np.kron(Sy, np.eye(3)) + np.kron(np.eye(3), Sy)
-Jz = np.kron(Sz, np.eye(3)) + np.kron(np.eye(3), Sz)
-
-state = mps.to_ground_space(3, bound)
-
-omps_1 = mps.apply_symmetry(S1)
-omps_2 = mps.apply_symmetry(S2)
-omps_3 = mps.apply_symmetry(S3)
-
-pprint(Jx @ ph_2_2 - ph_2_2 @ Jx)
-pprint(Jy @ ph_2_2 - ph_2_2 @ Jy)
-pprint(Jz @ ph_2_2 - ph_2_2 @ Jz)
+mps.virtual_symmetry_gen([Sx, Sy, Sz], True)

@@ -1305,7 +1305,7 @@ class PhasedEMachine(EMachine):
     Subclass of EMachine that includes a phase parameter for each output symbol.
     The phase modifies the A-matrices by multiplying each A[x] by exp(i * phase[x]).
     """
-    def __init__(self, A: np.ndarray, phases: np.ndarray):
+    def __init__(self, A: SiteMatrix, phases: np.ndarray):
         """
         Initialize the PhasedEMachine with given A-matrices and phases.
 
@@ -1316,8 +1316,7 @@ class PhasedEMachine(EMachine):
         phases : numpy.ndarray, shape (m,)
             The phase parameters for each output symbol.
         """
-        super().__init__(A.astype(np.complex128))
         self.phases = np.array(phases, dtype=np.complex128)
-        for x in range(self.mdim):
-            self.A[x] *= np.exp(1j * self.phases[x])
+        self.A = SiteMatrix(np.einsum('ij,ijk->ijk', np.exp(1j * self.phases), A))
+        super().__init__(self.A.astype(np.complex128))
         #self.E = purify(np.tensordot(self.A, np.conj(self.A), axes = ([0],[0])).transpose(0,2,1,3).reshape(self.dim**2, self.dim**2))
