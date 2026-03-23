@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.linalg import logm, expm
+from scipy.linalg import logm, expm, null_space
 import itertools
 from einops import rearrange
 import Centraliser as cen
@@ -11,10 +11,11 @@ def norm_l(vec):
 def norm_r(vec):
     return vec/(vec[0,0] + 1e-16)
 
-def purify(mat, tol = 1e-10, decimals=4):
+def purify(mat, tol=1e-10, decimals=4):
     arr = np.asarray(mat)
-    # Replace NaN and Inf with 0
-    arr = np.where(np.isnan(arr) | np.isinf(arr), 0, arr)
+    # Only apply isnan/isinf for numeric dtypes
+    if np.issubdtype(arr.dtype, np.number):
+        arr = np.where(np.isnan(arr) | np.isinf(arr), 0, arr)
     if np.iscomplexobj(arr):
         re = np.real(arr)
         im = np.imag(arr)
@@ -27,6 +28,31 @@ def purify(mat, tol = 1e-10, decimals=4):
 
 def pprint(array):
     print(purify(array))
+
+def intersection_of_rowspaces(A, B, tol=1e-10):
+    """
+    Find intersection of row spaces of A and B using scipy
+    """
+
+    # Build combined system
+    M = np.hstack([A.T, -B.T])  # shape (dim, nA+nB)
+
+    # Nullspace gives coefficients [a, b]
+    ns = null_space(M, rcond=tol)
+
+    solutions = []
+
+    for i in range(ns.shape[1]):
+        coeffs = ns[:, i]
+
+        # split coefficients
+        a = coeffs[:A.shape[0]]
+
+        # construct vector in intersection
+        v = a @ A
+        solutions.append(v)
+
+    return np.array(solutions)
 
 def even_process(p):
     A = np.array([[[p, 0],
@@ -87,6 +113,15 @@ def perturbed_coin(p, q):
                    [[0, p],
                     [0, 1-q]]])**(1/2)
     return EMachine(A)
+
+def gacha(p, pity):
+    T = np.zeros((2, pity, pity))
+    T[1,:,0] = p
+    T[1,-1,0] = 1
+    for i in range(0, pity-1):
+        T[0,i,i+1] = 1-p    
+    return EMachine(T**(1/2))
+
 class SiteMatrix(np.ndarray):
     def __init__(self, input_array):
         self.mdin, self.dim, _ = input_array.shape
@@ -96,23 +131,40 @@ class SiteMatrix(np.ndarray):
         return obj
     
     def __and__(self, other):
-        if self.mdim != other.mdim:
+        if self.shape[0] != other.shape[0]:
             raise ValueError("Mismatched mdim")
         else:
-            sum = np.zeros((self.mdim, self.dim + other.dim, self.dim + other.dim), dtype=self.dtype)
-            sum[:, :self.dim, :other.dim] = self
-            sum[:, self.dim:, self.dim:] = other
+            sum = np.zeros((self.shape[0], self.shape[1] + other.shape[1], self.shape[2] + other.shape[2]), dtype=self.dtype)
+            sum[:, :self.shape[1], :self.shape[2]] = self
+            sum[:, self.shape[1]:, self.shape[2]:] = other
             return SiteMatrix(sum)
 
     def __xor__(self, other):
         return np.kron(self, other)
     
     def __matmul__(self, other):
-        if self.dim != other.dim:
-            raise ValueError("Matrix dimensions do not match for multiplication")
+        if isinstance(other, SiteMatrix):
+            if self.shape[1] != other.shape[1]:
+                raise ValueError("Matrix dimensions do not match for multiplication")
+            else:
+                mat = rearrange(np.tensordot(self, other, axes=([2],[1])), "x i1 y i3 -> (x y) i1 i3")
+                return SiteMatrix(mat)
+        elif isinstance(other, np.ndarray):
+            if self.shape[1] != other.shape[0]:
+                raise ValueError("Matrix dimensions do not match for multiplication")
+            else:
+                mat = np.tensordot(self, other, axes=([2],[0]))
+                return mat
         else:
-            mat = rearrange(np.tensordot(self, other, axes=([2],[1])), "x i1 y i3 -> (x y) i1 i3")
-            return SiteMatrix(mat)
+            raise TypeError("Incompatible matrix types for multiplication")
+
+    def __rmatmul__(self, other):
+        if isinstance(other, np.ndarray):
+            if other.shape[1] != self.shape[1]:
+                raise ValueError("Matrix dimensions do not match for multiplication")
+            else:
+                mat = rearrange(np.tensordot(other, self, axes=([1],[1])), "i1 y i3 ->  y i1 i3")
+                return mat
     
     def __pow__(self, power):
         if isinstance(power, int) and power >= 1:
@@ -173,7 +225,13 @@ class MatrixProductState:
                            virtual_symmetry, virtual_symmetry_gen, find_generators_coefficients
       - Utility methods: interaction_rank, to_ground_space, mps_inverse
         """
-
+    def __xor__(self, other):
+        if isinstance(other, np.ndarray):
+            if self.dim != other.shape[0]:
+                raise ValueError("Matrix dimensions do not match for multiplication")
+            else:
+                return self.gauge_transform(other)
+            
     def __init__(self, A : SiteMatrix):
         self.A = SiteMatrix(A)
         self.dim = A.shape[1]
@@ -260,6 +318,9 @@ class MatrixProductState:
 
         A_can = self.lam @ self.gam
         return MatrixProductState(A_can)
+
+    def gauge_transform(self, X):
+        return MatrixProductState(X @ self.A @ np.linalg.inv(X))
     
     def correlation_length(self):
         """
@@ -468,7 +529,7 @@ class MatrixProductState:
         q, _ = np.linalg.qr(gs.T)
         return q.T
     
-    def orthogonal_projector(self, l, reshape = True):
+    def orthogonal_projector(self, l, reshape = False):
         """
         Compute the local parent Hamiltonian term for a contiguous block of length `l`.
         The parent Hamiltonian returned is the projector onto the orthogonal complement of the
@@ -910,13 +971,72 @@ class MatrixProductState:
         coefficients = tpg.find_generators_coefficients(M, verbose=verbose, basis_generators=basis, reference_coeffs=reference_coeffs)
         return coefficients
     
+    def find_discrete_symmetry(self, ham, verbose=False):
+        tpg = cen.TensorProductGroupPm(N = self.mdim, D = int(np.log(ham.shape[0])/np.log(self.mdim)))
+        return tpg.find_symmetry(ham, verbose=verbose)
+
+    def virtual_discrete_symmetry(self, ham, verbose=False, tol=1e-6):
+        D = self.mdim
+        perm_mats = cen.PermutationGroup.all_permutation_matrices(D)
+        final_results = []
+        A = np.array(self.A)
+
+        for perm_idx, mat in enumerate(perm_mats):
+            B = np.tensordot(mat, A, axes=([1],[0]))
+            phi_grid = np.linspace(0, np.pi, 100)
+            for phi_idx, phi in enumerate(phi_grid):
+                lam = np.exp(1j * phi)
+                intersection_basis = None  # will store running intersection
+                valid = True
+
+                for a_idx, (a, b) in enumerate(zip(A, B)):
+                    M = np.kron(b, np.eye(self.dim)) - lam * np.kron(np.eye(self.dim), a.T)
+                    ns = null_space(M, rcond=tol)
+                    if ns.shape[1] == 0:
+                        valid = False
+                        break
+
+                    # convert nullspace vectors into rowspace form
+                    current_basis = ns.T  # each row = one vector
+
+                    if intersection_basis is None:
+                        intersection_basis = current_basis
+                    else:
+                        prev_dim = intersection_basis.shape[0]
+                        intersection_basis = intersection_of_rowspaces(
+                            intersection_basis,
+                            current_basis,
+                            tol=tol
+                        )
+                    if intersection_basis.shape[0] == 0:
+                        valid = False
+                        break
+
+                if valid and intersection_basis is not None:
+                    reshaped = [
+                        purify(v.reshape(self.dim, self.dim)) / np.linalg.norm(v)
+                        for v in intersection_basis
+                    ]
+                    final_results.append({
+                        'permutation': mat,
+                        'phi': phi,
+                        'null_vectors': reshaped
+                    })
+        if verbose:
+            print(f"\nTotal solutions found: {len(final_results)}\n")
+            for idx, res in enumerate(final_results):
+                print(f"Solution {idx+1}:")
+                print("  Permutation matrix:\n", purify(res['permutation']))
+                print(f"  phi: {res['phi']:.6f}")
+                print(f"  Number of null vectors: {len(res['null_vectors'])}")
+                for v_idx, v in enumerate(res['null_vectors']):
+                    print(f"    Null vector {v_idx+1} (matrix form):\n{purify(v)}")
+                print("-")
+            print()
+        return final_results
+
 class EMachine(MatrixProductState):
     """
-    EMachine class for analyzing classical stochastic processes through a tensor-based framework.
-    This class extends MatrixProductState and provides methods for computing various information-theoretic
-    and dynamical quantities from a set of transition matrices. It is designed to characterize the memory,
-    correlations, and statistical properties of hidden Markov models and related classical systems.
-    Attributes
     A : numpy.ndarray
         Tensor of shape (m, n, n) containing m matrices of size n×n, inherited from MatrixProductState.
     T : numpy.ndarray
@@ -1138,10 +1258,12 @@ class EMachine(MatrixProductState):
         stoch = np.array([], dtype=int)
         for _ in range(iterations):
             state_arr = np.array([np.dot(t.T, state) for t in self.T])
+            emission_indices = np.arange(self.mdim)
+            states_indices = np.arange(self.dim)
             prob = np.sum(state_arr, axis=1)
-            output = np.random.choice([0, 1], p=prob/prob.sum())
+            output = np.random.choice(emission_indices, p=prob/prob.sum())
             stoch = np.append(stoch, output)
-            state_num = np.random.choice([0, 1], p=state_arr[output]/(state_arr[output].sum()))
+            state_num = np.random.choice(states_indices, p=state_arr[output]/(state_arr[output].sum()))
             state = np.zeros(self.dim)
             state[state_num] = 1
         return stoch

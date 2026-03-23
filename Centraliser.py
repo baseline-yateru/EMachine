@@ -203,6 +203,37 @@ class SON:
             U[:, -1] *= -1
         return U
 
+class PermutationGroup:
+    """Work with S_D permutation group acting on D-fold tensor products"""
+    
+    @staticmethod
+    def permutation_matrix(perm, D):
+        """
+        Generate the D x D permutation matrix for a given permutation of D elements.
+        Args:
+            perm: A list or array representing the permutation of [0, 1, ..., D-1]
+            D: Size of the permutation (matrix will be D x D)
+        Returns:
+            A (D x D) permutation matrix that permutes the standard basis according to 'perm'
+        """
+        if sorted(perm) != list(range(D)):
+            raise ValueError("Invalid permutation")
+        P = np.zeros((D, D), dtype=complex)
+        for i in range(D):
+            P[perm[i], i] = 1
+        return P
+
+    @staticmethod
+    def all_permutation_matrices(D):
+        """
+        Generate all permutation matrices for S_D acting on D-fold tensor products (N=2).
+        Returns a list of permutation matrices (as numpy arrays).
+        """
+        import itertools
+        perms = list(itertools.permutations(range(D)))
+        matrices = [PermutationGroup.permutation_matrix(list(perm), D) for perm in perms]
+        return matrices
+
 
 class TensorProductGroup:
     """Work with U^⊗D tensor product group for SU(N)"""
@@ -960,4 +991,47 @@ class TensorProductGroupSO(TensorProductGroup):
 
         return np.real(coefficients)
 
+class TensorProductGroupPm:
+    """Work with D^⊗D tensor product group for Dihedral symmetries"""
 
+    def __init__(self, N, D):
+        """
+        Initialize for D-fold tensor products of Dihedral group D_N.
+
+        Args:
+            N: Number of elements in the dihedral group (D_N has N! elements)
+            D: Number of tensor product factors
+        """
+        self.N = N
+        self.D = D
+        self.permutations = PermutationGroup.all_permutation_matrices(N)
+        self.hilbert_dim = N ** D
+    
+    def perm_tensors(self):
+        """Generate the tensor product representation of a permutation"""
+        result = []
+        for mat in self.permutations:
+            perm_tensor = mat
+            for i in range(self.D - 1):
+                perm_tensor = np.kron(perm_tensor, mat)
+            result.append(perm_tensor)
+        return result
+    
+    def find_symmetry(self, M, verbose=True, return_indices=False):
+        """Find permutation symmetries of M by checking commutation with perm_tensors
+        If verbose, print which permutations commute with M and their indices."""
+        perms = self.perm_tensors()
+        symmetries = []
+        for i, perm in enumerate(perms):
+            if np.allclose(perm @ M, M @ perm, atol=1e-8):
+                symmetries.append(i)
+                if verbose:
+                    print(f"Permutation index {i} commutes with M.")
+        if verbose:
+            print(f"Total symmetries found: {len(symmetries)}")
+            print(f"Symmetry indices: {symmetries}")
+        if return_indices:
+            return symmetries
+        else:
+            return [self.permutations[i] for i in symmetries]
+    
